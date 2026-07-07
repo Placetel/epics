@@ -62,7 +62,7 @@ class Epics::Client
   end
 
   def a
-    keys["A006"]
+    keys[Epics::SIGNATURE_VERSION]
   end
 
   def x
@@ -111,7 +111,7 @@ class Epics::Client
 
   def self.setup(passphrase, url, host_id, user_id, partner_id, keysize = 2048, options = {})
     client = new(nil, passphrase, url, host_id, user_id, partner_id, options)
-    client.keys = %w(A006 X002 E002).each_with_object({}) do |type, memo|
+    client.keys = [Epics::SIGNATURE_VERSION, 'X002', 'E002'].each_with_object({}) do |type, memo|
       memo[type] = Epics::Key.new( OpenSSL::PKey::RSA.generate(keysize) )
     end
 
@@ -485,7 +485,7 @@ class Epics::Client
     OpenSSL::PKey::RSA.new(OpenSSL::ASN1::Sequence(sequence).to_der)
   end
 
-  KEY_FOR_CERT_TYPE = { a: 'A006', x: 'X002', e: 'E002' }.freeze
+  KEY_FOR_CERT_TYPE = { a: Epics::SIGNATURE_VERSION, x: 'X002', e: 'E002' }.freeze
 
   def self_signed_certificate(type)
     key_name = KEY_FOR_CERT_TYPE.fetch(type.to_sym)

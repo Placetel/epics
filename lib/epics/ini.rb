@@ -38,7 +38,7 @@ class Epics::INI < Epics::GenericRequest
             }
             xml.TimeStamp timestamp
           }
-          xml.SignatureVersion 'A006'
+          xml.SignatureVersion Epics::SIGNATURE_VERSION
         }
         xml.PartnerID partner_id
         xml.UserID user_id
@@ -54,7 +54,7 @@ class Epics::INI < Epics::GenericRequest
       xml.SignaturePubKeyOrderData('xmlns:ds' => 'http://www.w3.org/2000/09/xmldsig#', 'xmlns' => 'http://www.ebics.org/S002') {
         xml.SignaturePubKeyInfo {
           x509_data_xml(xml, client.x_509_certificate(:a))
-          xml.SignatureVersion 'A006'
+          xml.SignatureVersion Epics::SIGNATURE_VERSION
         }
         xml.PartnerID partner_id
         xml.UserID user_id

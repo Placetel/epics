@@ -29,7 +29,7 @@ class Epics::GenericUploadRequest < Epics::GenericRequest
           xml.SignatureData(encrypted_order_signature, authenticate: true)
           # EBICS 3.0 (H005) additionally carries the plain hash of the order
           # data (the value that was signed) as a DataDigest element.
-          xml.DataDigest(data_digest, SignatureVersion: 'A006') if client.h005?
+          xml.DataDigest(data_digest, SignatureVersion: Epics::SIGNATURE_VERSION) if client.h005?
         }
       }
     end.doc.root
@@ -50,7 +50,7 @@ class Epics::GenericUploadRequest < Epics::GenericRequest
     Nokogiri::XML::Builder.new do |xml|
       xml.UserSignatureData('xmlns' => ns, 'xmlns:xsi' => 'http://www.w3.org/2001/XMLSchema-instance', 'xsi:schemaLocation' => "#{ns} #{ns}/ebics_signature.xsd") {
         xml.OrderSignatureData {
-          xml.SignatureVersion "A006"
+          xml.SignatureVersion Epics::SIGNATURE_VERSION
           xml.SignatureValue signature_value
           xml.PartnerID partner_id
           xml.UserID user_id
