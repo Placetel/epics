@@ -11,12 +11,21 @@
 #
 # Unmapped codes raise, pointing the caller at the raw BTU/BTD API.
 module Epics::BtfMapping
-  # code => [direction, btf-attributes]
+  # code => btf-attributes. Message versions are only pinned where we are fairly
+  # confident of the DE default; where omitted the <MsgName> carries no version
+  # attribute and the bank applies its own default. Override per call when your
+  # bank differs (see Epics::Client convenience methods / #BTU / #BTD).
   UPLOADS = {
     'CCT' => { service_name: 'SCT', scope: 'DE', msg_name: 'pain.001', msg_name_version: '03' },
     'CCS' => { service_name: 'SCT', scope: 'DE', msg_name: 'pain.001', msg_name_version: '03' },
     'CDD' => { service_name: 'SDD', service_option: 'COR', scope: 'DE', msg_name: 'pain.008', msg_name_version: '02' },
     'CDB' => { service_name: 'SDD', service_option: 'B2B', scope: 'DE', msg_name: 'pain.008', msg_name_version: '02' },
+    'AZV' => { service_name: 'XCT', scope: 'DE', msg_name: 'dtazv' },
+    'C2S' => { service_name: 'SDD', scope: 'BIL', msg_name: 'pain.008' },
+    'CDS' => { service_name: 'SDD', scope: 'BIL', msg_name: 'pain.008' },
+    'CIP' => { service_name: 'SCI', msg_name: 'pain.001' },
+    'XE2' => { service_name: 'MCT', msg_name: 'pain.001' },
+    'XE3' => { service_name: 'SDD', msg_name: 'pain.008' },
   }.freeze
 
   DOWNLOADS = {
@@ -26,6 +35,14 @@ module Epics::BtfMapping
     'C54' => { service_name: 'REP', scope: 'DE', container: 'ZIP', msg_name: 'camt.054', msg_name_version: '08' },
     'VMK' => { service_name: 'STM', scope: 'DE', msg_name: 'mt942' },
     'PSR' => { service_name: 'PSR', scope: 'DE', msg_name: 'pain.002', msg_name_version: '03' },
+    'Z52' => { service_name: 'STM', container: 'ZIP', msg_name: 'camt.052' },
+    'Z53' => { service_name: 'EOP', container: 'ZIP', msg_name: 'camt.053' },
+    'Z54' => { service_name: 'EOP', service_option: 'XQRR', container: 'ZIP', msg_name: 'camt.054' },
+    'Z01' => { service_name: 'PSR', service_option: 'CH003GEN', container: 'ZIP', msg_name: 'pain.002' },
+    'BKA' => { service_name: 'EOP', scope: 'DE', container: 'ZIP', msg_name: 'camt.053' },
+    'C5N' => { service_name: 'STM', scope: 'DE', service_option: 'SCI', container: 'ZIP', msg_name: 'camt.054' },
+    'CDZ' => { service_name: 'REP', scope: 'DE', service_option: 'SDD', container: 'ZIP', msg_name: 'pain.002' },
+    'CRZ' => { service_name: 'REP', scope: 'DE', service_option: 'SCT', container: 'ZIP', msg_name: 'pain.002' },
   }.freeze
 
   module_function

@@ -30,8 +30,29 @@ RSpec.describe Epics::BtfMapping do
     expect(btf.msg_name).to eq('camt.053')
   end
 
+  it 'maps the extended upload set (XE2/AZV/CIP/...)' do
+    expect(described_class.upload('XE2').service_name).to eq('MCT')
+    expect(described_class.upload('AZV').msg_name).to eq('dtazv')
+    expect(described_class.upload('CIP').service_name).to eq('SCI')
+    expect(described_class.upload('C2S').scope).to eq('BIL')
+  end
+
+  it 'maps the extended download set (Z53/BKA/CDZ/...)' do
+    expect(described_class.download('Z53').service_name).to eq('EOP')
+    expect(described_class.download('Z53').container).to eq('ZIP')
+    expect(described_class.download('CDZ').service_option).to eq('SDD')
+    expect(described_class.download('CRZ').service_option).to eq('SCT')
+    expect(described_class.download('C5N').service_option).to eq('SCI')
+  end
+
   it 'raises a helpful error for unmapped codes' do
     expect { described_class.upload('ZZZ') }.to raise_error(ArgumentError, /raw/)
+  end
+
+  it 'still raises for codes with no H005 form (CD1/FUL/XCT/XDS)' do
+    %w[CD1 FUL XCT XDS].each do |code|
+      expect { described_class.upload(code) }.to raise_error(ArgumentError)
+    end
   end
 
   it 'applies overrides on top of the mapped defaults' do

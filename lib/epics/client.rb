@@ -5,9 +5,9 @@ class Epics::Client
                 :x_509_certificates_content, :debug_mode, :ebics_version
 
   attr_writer :iban, :bic, :name
-  
+
   def_delegators :connection, :post
-  
+
   def initialize(keys_content, passphrase, url, host_id, user_id, partner_id, options = {})
     self.keys_content = keys_content.respond_to?(:read) ? keys_content.read : keys_content if keys_content
     self.passphrase = passphrase
@@ -178,7 +178,9 @@ class Epics::Client
     [bank_x, bank_e]
   end
 
-  def AZV(document)
+  def AZV(document, **overrides)
+    return btf_upload('AZV', document, **overrides) if h005?
+
     upload(Epics::AZV, document)
   end
 
@@ -188,27 +190,37 @@ class Epics::Client
 
   def CDB(document, **overrides)
     return btf_upload('CDB', document, **overrides) if h005?
+
     upload(Epics::CDB, document)
   end
 
-  def C2S(document)
+  def C2S(document, **overrides)
+    return btf_upload('C2S', document, **overrides) if h005?
+
     upload(Epics::C2S, document)
   end
 
   def CDD(document, **overrides)
     return btf_upload('CDD', document, **overrides) if h005?
+
     upload(Epics::CDD, document)
   end
 
-  def XE2(document)
+  def XE2(document, **overrides)
+    return btf_upload('XE2', document, **overrides) if h005?
+
     upload(Epics::XE2, document)
   end
 
-  def XE3(document)
+  def XE3(document, **overrides)
+    return btf_upload('XE3', document, **overrides) if h005?
+
     upload(Epics::XE3, document)
   end
 
-  def CDS(document)
+  def CDS(document, **overrides)
+    return btf_upload('CDS', document, **overrides) if h005?
+
     upload(Epics::CDS, document)
   end
 
@@ -218,15 +230,19 @@ class Epics::Client
 
   def CCT(document, **overrides)
     return btf_upload('CCT', document, **overrides) if h005?
+
     upload(Epics::CCT, document)
   end
 
-  def CIP(document)
+  def CIP(document, **overrides)
+    return btf_upload('CIP', document, **overrides) if h005?
+
     upload(Epics::CIP, document)
   end
 
   def CCS(document, **overrides)
     return btf_upload('CCS', document, **overrides) if h005?
+
     upload(Epics::CCS, document)
   end
 
@@ -252,6 +268,7 @@ class Epics::Client
 
   def STA(from = nil, to = nil, **overrides)
     return btf_download('STA', from, to, **overrides) if h005?
+
     download(Epics::STA, from: from, to: to)
   end
 
@@ -261,53 +278,73 @@ class Epics::Client
 
   def VMK(from = nil, to = nil, **overrides)
     return btf_download('VMK', from, to, **overrides) if h005?
+
     download(Epics::VMK, from: from, to: to)
   end
 
-  def CDZ(from = nil, to = nil)
+  def CDZ(from = nil, to = nil, **overrides)
+    return btf_download('CDZ', from, to, **overrides) if h005?
+
     download_and_unzip(Epics::CDZ, from: from, to: to)
   end
 
-  def CRZ(from = nil, to = nil)
+  def CRZ(from = nil, to = nil, **overrides)
+    return btf_download('CRZ', from, to, **overrides) if h005?
+
     download_and_unzip(Epics::CRZ, from: from, to: to)
   end
 
-  def BKA(from, to)
+  def BKA(from, to, **overrides)
+    return btf_download('BKA', from, to, **overrides) if h005?
+
     download_and_unzip(Epics::BKA, from: from, to: to)
   end
 
   def C52(from, to, **overrides)
     return btf_download('C52', from, to, **overrides) if h005?
+
     download_and_unzip(Epics::C52, from: from, to: to)
   end
 
   def C53(from, to, **overrides)
     return btf_download('C53', from, to, **overrides) if h005?
+
     download_and_unzip(Epics::C53, from: from, to: to)
   end
 
   def C54(from, to, **overrides)
     return btf_download('C54', from, to, **overrides) if h005?
+
     download_and_unzip(Epics::C54, from: from, to: to)
   end
 
-  def C5N(from, to)
+  def C5N(from, to, **overrides)
+    return btf_download('C5N', from, to, **overrides) if h005?
+
     download_and_unzip(Epics::C5N, from: from, to: to)
   end
 
-  def Z01(from, to)
+  def Z01(from, to, **overrides)
+    return btf_download('Z01', from, to, **overrides) if h005?
+
     download_and_unzip(Epics::Z01, from: from, to: to)
   end
 
-  def Z52(from, to)
+  def Z52(from, to, **overrides)
+    return btf_download('Z52', from, to, **overrides) if h005?
+
     download_and_unzip(Epics::Z52, from: from, to: to)
   end
 
-  def Z53(from, to)
+  def Z53(from, to, **overrides)
+    return btf_download('Z53', from, to, **overrides) if h005?
+
     download_and_unzip(Epics::Z53, from: from, to: to)
   end
 
-  def Z54(from, to)
+  def Z54(from, to, **overrides)
+    return btf_download('Z54', from, to, **overrides) if h005?
+
     download_and_unzip(Epics::Z54, from: from, to: to)
   end
 
@@ -363,7 +400,7 @@ class Epics::Client
   def save_keys(path)
     File.write(path, dump_keys)
   end
-  
+
   def x_509_certificate(type)
     content = x_509_certificates_content[type.to_sym]
     if content.nil? || content.empty?
@@ -375,7 +412,7 @@ class Epics::Client
     end
     Epics::X509Certificate.new(content)
   end
-  
+
   def x_509_certificate_hash(type)
     # Routes through x_509_certificate so H005 self-signed certificates get a
     # fingerprint too — the INI letter needs it for subscriber verification.

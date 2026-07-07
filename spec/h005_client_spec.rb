@@ -281,17 +281,31 @@ RSpec.describe 'EBICS 3.0 (H005) client' do
 
   describe 'rejects classic business orders that have no H005 form' do
     it 'raises VersionSupportError instead of emitting a malformed order' do
-      expect { Epics::XE2.new(client, '<Document/>').to_xml }
+      expect { Epics::WSS.new(client).to_xml }
         .to raise_error(Epics::VersionSupportError, /not available under EBICS 3.0/)
     end
 
     it 'names the raw BTU/BTD escape hatch in the message' do
-      expect { Epics::Z53.new(client).to_xml }
+      expect { Epics::FUL.new(client, '<Document/>').to_xml }
         .to raise_error(Epics::VersionSupportError, /BTU.*BTD|BtfMapping/)
     end
 
     it 'still allows administrative order types (HTD)' do
       expect { Epics::HTD.new(client).to_xml }.not_to raise_error
+    end
+  end
+
+  describe 'extended convenience methods route to BTU/BTD under H005' do
+    it 'XE2 builds a BTU with the MCT service' do
+      order = Epics::BTU.new(client, '<Document/>', service: Epics::BtfMapping.upload('XE2'))
+      expect(order.header.to_s).to include('<AdminOrderType>BTU</AdminOrderType>')
+      expect(order.header.to_s).to include('<ServiceName>MCT</ServiceName>')
+    end
+
+    it 'Z53 builds a BTD with the EOP service' do
+      order = Epics::BTD.new(client, service: Epics::BtfMapping.download('Z53'))
+      expect(order.header.to_s).to include('<AdminOrderType>BTD</AdminOrderType>')
+      expect(order.header.to_s).to include('<ServiceName>EOP</ServiceName>')
     end
   end
 end
