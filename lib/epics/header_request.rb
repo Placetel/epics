@@ -2,6 +2,12 @@ class Epics::HeaderRequest
   extend Forwardable
   attr_accessor :client
 
+  # Administrative order types that remain first-class order types under EBICS
+  # 3.0 (H005). Every other (business) transaction is a BTF service carried by
+  # BTU/BTD, so a classic business order code reaching the H005 builder is a
+  # caller error rather than something to silently emit as a malformed request.
+  H005_ADMIN_ORDER_TYPES = %w[HPB HTD HAA HKD HPD HAC PTK INI HIA].freeze
+
   def initialize(client)
     self.client = client
   end
@@ -61,6 +67,7 @@ class Epics::HeaderRequest
 
   def build_h005_order_details(xml, options)
     admin_order_type = options[:admin_order_type] || options[:order_type]
+    ensure_h005_order_type!(admin_order_type)
     xml.AdminOrderType admin_order_type
 
     case admin_order_type
@@ -95,6 +102,22 @@ class Epics::HeaderRequest
         }
       end
     end
+  end
+
+  # Reject classic business order codes under H005 instead of emitting an
+  # AdminOrderType the bank will reject. BTU/BTD are the generic upload/download
+  # transports; the whitelist covers the administrative order types that survive
+  # into H005. Everything else must go through a BTF service (see Epics::BtfMapping
+  # and Epics::Client#BTU / #BTD).
+  def ensure_h005_order_type!(admin_order_type)
+    return if %w[BTU BTD].include?(admin_order_type)
+    return if H005_ADMIN_ORDER_TYPES.include?(admin_order_type)
+
+    raise Epics::VersionSupportError,
+      "Order type #{admin_order_type.inspect} is not available under EBICS 3.0 (H005). " \
+      "H005 expresses business transactions as BTF services — use Epics::Client#BTU / #BTD " \
+      "with an Epics::BTF, or add a mapping in Epics::BtfMapping. Administrative order types " \
+      "supported under H005: #{H005_ADMIN_ORDER_TYPES.join(', ')}."
   end
 
   # Builds the BTF <Service> element. The child element order follows the H005

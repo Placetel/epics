@@ -81,6 +81,11 @@ module Epics
     h004: { namespace: 'urn:org:ebics:H004', version: 'H004', revision: '1' },
     h005: { namespace: 'urn:org:ebics:H005', version: 'H005', revision: '1' },
   }.freeze
+
+  # Raised when an order type is requested under an EBICS protocol version that
+  # does not support it (e.g. a classic H004 business order under H005, which
+  # expresses business transactions as BTF services instead).
+  class VersionSupportError < StandardError; end
 end
 
 Ebics = Epics
