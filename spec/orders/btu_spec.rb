@@ -9,7 +9,7 @@ RSpec.describe Epics::BTU do
 
   let(:document) { File.read(File.join(File.dirname(__FILE__), '..', 'fixtures', 'xml', 'cd1.xml')) }
   let(:service) do
-    Epics::BTF.new(service_name: 'SCT', scope: 'DE', msg_name: 'pain.001', msg_version: '03')
+    Epics::BTF.new(service_name: 'SCT', scope: 'DE', msg_name: 'pain.001', msg_name_version: '03')
   end
 
   subject(:order) { described_class.new(client, document, service: service) }

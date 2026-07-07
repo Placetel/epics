@@ -2,7 +2,7 @@ RSpec.describe Epics::BTF do
   it 'normalizes attributes into the service hash consumed by HeaderRequest' do
     btf = described_class.new(
       service_name: 'SCT', scope: 'DE', service_option: 'URG',
-      container: 'ZIP', msg_name: 'pain.001', msg_version: '03', msg_variant: '001'
+      container: 'ZIP', msg_name: 'pain.001', msg_name_version: '03', msg_variant: '001'
     )
 
     expect(btf.to_h).to eq(
@@ -32,5 +32,19 @@ RSpec.describe Epics::BtfMapping do
 
   it 'raises a helpful error for unmapped codes' do
     expect { described_class.upload('ZZZ') }.to raise_error(ArgumentError, /raw/)
+  end
+
+  it 'applies overrides on top of the mapped defaults' do
+    btf = described_class.download('C53', scope: 'CH', msg_name_version: '04')
+    expect(btf.service_name).to eq('EOP')   # default kept
+    expect(btf.msg_name).to eq('camt.053')  # default kept
+    expect(btf.scope).to eq('CH')           # overridden
+    expect(btf.msg_name_version).to eq('04')     # overridden
+  end
+
+  it 'ignores nil overrides, keeping the mapped default' do
+    btf = described_class.download('C53', scope: nil, msg_name_version: nil)
+    expect(btf.scope).to eq('DE')
+    expect(btf.msg_name_version).to eq('08')
   end
 end

@@ -201,7 +201,7 @@ RSpec.describe 'EBICS 3.0 (H005) client' do
       expect(services.map(&:service_name)).to eq(%w[EOP SCT])
       expect(services.first.container).to eq('ZIP')
       expect(services.first.msg_name).to eq('camt.053')
-      expect(services.first.msg_version).to eq('08')
+      expect(services.first.msg_name_version).to eq('08')
     end
   end
 
@@ -268,6 +268,14 @@ RSpec.describe 'EBICS 3.0 (H005) client' do
       order = Epics::BTU.new(client, '<Document/>', service: Epics::BtfMapping.upload('CCT'))
       expect(order.header.to_s).to include('<AdminOrderType>BTU</AdminOrderType>')
       expect(order.header.to_s).to include('<ServiceName>SCT</ServiceName>')
+    end
+
+    it 'passes per-call overrides through to the rendered BTD Service' do
+      btf = Epics::BtfMapping.download('C53', scope: 'CH', msg_name_version: '04')
+      header = Epics::BTD.new(client, service: btf).header.to_s
+      expect(header).to include('<ServiceName>EOP</ServiceName>')
+      expect(header).to include('<Scope>CH</Scope>')
+      expect(header).to include('<MsgName version="04">camt.053</MsgName>')
     end
   end
 end

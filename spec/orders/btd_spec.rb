@@ -8,7 +8,7 @@ RSpec.describe Epics::BTD do
   end
 
   let(:service) do
-    Epics::BTF.new(service_name: 'EOP', scope: 'DE', container: 'ZIP', msg_name: 'camt.053', msg_version: '08')
+    Epics::BTF.new(service_name: 'EOP', scope: 'DE', container: 'ZIP', msg_name: 'camt.053', msg_name_version: '08')
   end
 
   subject(:order) { described_class.new(client, service: service, from: '2026-01-01', to: '2026-01-31') }

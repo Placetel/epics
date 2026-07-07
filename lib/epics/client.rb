@@ -186,8 +186,8 @@ class Epics::Client
     upload(Epics::CD1, document)
   end
 
-  def CDB(document)
-    return btf_upload('CDB', document) if h005?
+  def CDB(document, **overrides)
+    return btf_upload('CDB', document, **overrides) if h005?
     upload(Epics::CDB, document)
   end
 
@@ -195,8 +195,8 @@ class Epics::Client
     upload(Epics::C2S, document)
   end
 
-  def CDD(document)
-    return btf_upload('CDD', document) if h005?
+  def CDD(document, **overrides)
+    return btf_upload('CDD', document, **overrides) if h005?
     upload(Epics::CDD, document)
   end
 
@@ -216,8 +216,8 @@ class Epics::Client
     upload(Epics::XDS, document)
   end
 
-  def CCT(document)
-    return btf_upload('CCT', document) if h005?
+  def CCT(document, **overrides)
+    return btf_upload('CCT', document, **overrides) if h005?
     upload(Epics::CCT, document)
   end
 
@@ -225,8 +225,8 @@ class Epics::Client
     upload(Epics::CIP, document)
   end
 
-  def CCS(document)
-    return btf_upload('CCS', document) if h005?
+  def CCS(document, **overrides)
+    return btf_upload('CCS', document, **overrides) if h005?
     upload(Epics::CCS, document)
   end
 
@@ -250,8 +250,8 @@ class Epics::Client
     download(Epics::BTD, service: service, from: from, to: to, parameters: parameters)
   end
 
-  def STA(from = nil, to = nil)
-    return btf_download('STA', from, to) if h005?
+  def STA(from = nil, to = nil, **overrides)
+    return btf_download('STA', from, to, **overrides) if h005?
     download(Epics::STA, from: from, to: to)
   end
 
@@ -259,8 +259,8 @@ class Epics::Client
     download(Epics::FDL, file_format: format, from: from, to: to )
   end
 
-  def VMK(from = nil, to = nil)
-    return btf_download('VMK', from, to) if h005?
+  def VMK(from = nil, to = nil, **overrides)
+    return btf_download('VMK', from, to, **overrides) if h005?
     download(Epics::VMK, from: from, to: to)
   end
 
@@ -276,18 +276,18 @@ class Epics::Client
     download_and_unzip(Epics::BKA, from: from, to: to)
   end
 
-  def C52(from, to)
-    return btf_download('C52', from, to) if h005?
+  def C52(from, to, **overrides)
+    return btf_download('C52', from, to, **overrides) if h005?
     download_and_unzip(Epics::C52, from: from, to: to)
   end
 
-  def C53(from, to)
-    return btf_download('C53', from, to) if h005?
+  def C53(from, to, **overrides)
+    return btf_download('C53', from, to, **overrides) if h005?
     download_and_unzip(Epics::C53, from: from, to: to)
   end
 
-  def C54(from, to)
-    return btf_download('C54', from, to) if h005?
+  def C54(from, to, **overrides)
+    return btf_download('C54', from, to, **overrides) if h005?
     download_and_unzip(Epics::C54, from: from, to: to)
   end
 
@@ -434,7 +434,7 @@ class Epics::Client
       service_option: text.call('ServiceOption'),
       container:      container && (container['containerType'] || container.content),
       msg_name:       msg&.content,
-      msg_version:    msg && msg['version'],
+      msg_name_version:    msg && msg['version'],
       msg_variant:    msg && msg['variant'],
       msg_format:     msg && msg['format'],
     )
@@ -466,12 +466,14 @@ class Epics::Client
   end
 
   # Route a classic order code to its H005 BTF Service via Epics::BtfMapping.
-  def btf_upload(code, document)
-    self.BTU(document, Epics::BtfMapping.upload(code))
+  # `overrides` replace individual BTF attributes (scope, msg_name_version, ...) on
+  # top of the mapped starter-set default.
+  def btf_upload(code, document, **overrides)
+    self.BTU(document, Epics::BtfMapping.upload(code, **overrides))
   end
 
-  def btf_download(code, from, to)
-    btf = Epics::BtfMapping.download(code)
+  def btf_download(code, from, to, **overrides)
+    btf = Epics::BtfMapping.download(code, **overrides)
     if btf.container == 'ZIP'
       download_and_unzip(Epics::BTD, service: btf, from: from, to: to)
     else

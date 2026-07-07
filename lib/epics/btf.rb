@@ -19,22 +19,22 @@
 #     service_name: "SCT",
 #     scope: "DE",
 #     msg_name: "pain.001",
-#     msg_version: "03",
+#     msg_name_version: "03",
 #   )
 #
 # A plain Hash with the same keys is accepted anywhere a BTF is expected.
 class Epics::BTF
   attr_reader :service_name, :service_option, :scope, :container,
-              :msg_name, :msg_version, :msg_variant, :msg_format
+              :msg_name, :msg_name_version, :msg_variant, :msg_format
 
   def initialize(service_name:, msg_name:, scope: nil, service_option: nil,
-                 container: nil, msg_version: nil, msg_variant: nil, msg_format: nil)
+                 container: nil, msg_name_version: nil, msg_variant: nil, msg_format: nil)
     @service_name   = service_name
     @service_option = service_option
     @scope          = scope
     @container      = container
     @msg_name       = msg_name
-    @msg_version    = msg_version
+    @msg_name_version    = msg_name_version
     @msg_variant    = msg_variant
     @msg_format     = msg_format
   end
@@ -48,7 +48,7 @@ class Epics::BTF
       container: container,
       msg_name: {
         name: msg_name,
-        version: msg_version,
+        version: msg_name_version,
         variant: msg_variant,
         format: msg_format,
       },
