@@ -2,12 +2,12 @@ class Epics::Client
   extend Forwardable
 
   attr_accessor :passphrase, :url, :host_id, :user_id, :partner_id, :keys, :keys_content, :locale, :product_name,
-                :x_509_certificates_content, :debug_mode
+                :x_509_certificates_content, :debug_mode, :ebics_version
 
   attr_writer :iban, :bic, :name
-  
+
   def_delegators :connection, :post
-  
+
   def initialize(keys_content, passphrase, url, host_id, user_id, partner_id, options = {})
     self.keys_content = keys_content.respond_to?(:read) ? keys_content.read : keys_content if keys_content
     self.passphrase = passphrase
@@ -19,11 +19,35 @@ class Epics::Client
     self.locale = options[:locale] || Epics::DEFAULT_LOCALE
     self.product_name = options[:product_name] || Epics::DEFAULT_PRODUCT_NAME
     self.debug_mode = !!options[:debug_mode]
+    self.ebics_version = (options[:version] || Epics::DEFAULT_VERSION).to_s.downcase.to_sym
+    unless Epics::EBICS_PROTOCOLS.key?(ebics_version)
+      raise ArgumentError, "Unsupported EBICS version #{ebics_version.inspect}, expected one of #{Epics::EBICS_PROTOCOLS.keys.inspect}"
+    end
     self.x_509_certificates_content = {
       a: options[:x_509_certificate_a_content],
       x: options[:x_509_certificate_x_content],
       e: options[:x_509_certificate_e_content]
     }
+  end
+
+  def protocol
+    Epics::EBICS_PROTOCOLS.fetch(ebics_version)
+  end
+
+  def namespace
+    protocol[:namespace]
+  end
+
+  def protocol_version
+    protocol[:version]
+  end
+
+  def revision
+    protocol[:revision]
+  end
+
+  def h005?
+    ebics_version == :h005
   end
 
   def inspect
@@ -38,7 +62,7 @@ class Epics::Client
   end
 
   def a
-    keys["A006"]
+    keys[Epics::SIGNATURE_VERSION]
   end
 
   def x
@@ -47,6 +71,16 @@ class Epics::Client
 
   def bank_e
     keys["#{host_id.upcase}.E002"]
+  end
+
+  CERTIFICATE_SUFFIX = '.crt'.freeze
+
+  # X.509 certificates belonging to the user's keys, keyed like "A006.crt".
+  # Populated from the key file (entries suffixed .crt) and by generated
+  # self-signed certificates (H005); persisted alongside the keys via
+  # save_keys/dump_keys so certificates stay stable across processes.
+  def certificates
+    @certificates ||= {}
   end
 
   def bank_x
@@ -69,9 +103,15 @@ class Epics::Client
     @order_types ||= (self.HTD; @order_types)
   end
 
+  # EBICS 3.0 (H005): the available business transactions as Epics::BTF services
+  # (there is no flat OrderTypes list anymore). Empty on H004.
+  def services
+    @services ||= (self.HTD; @services)
+  end
+
   def self.setup(passphrase, url, host_id, user_id, partner_id, keysize = 2048, options = {})
     client = new(nil, passphrase, url, host_id, user_id, partner_id, options)
-    client.keys = %w(A006 X002 E002).each_with_object({}) do |type, memo|
+    client.keys = [Epics::SIGNATURE_VERSION, 'X002', 'E002'].each_with_object({}) do |type, memo|
       memo[type] = Epics::Key.new( OpenSSL::PKey::RSA.generate(keysize) )
     end
 
@@ -123,25 +163,24 @@ class Epics::Client
   end
 
   def HPB
-    Nokogiri::XML(download(Epics::HPB)).xpath("//xmlns:PubKeyValue", xmlns: "urn:org:ebics:H004").each do |node|
+    doc = Nokogiri::XML(download(Epics::HPB))
+    return hpb_h005(doc) if h005?
+
+    doc.xpath("//xmlns:PubKeyValue", xmlns: namespace).each do |node|
       type = node.parent.last_element_child.content
 
       modulus  = Base64.decode64(node.at_xpath(".//*[local-name() = 'Modulus']").content)
       exponent = Base64.decode64(node.at_xpath(".//*[local-name() = 'Exponent']").content)
 
-      sequence = []
-      sequence << OpenSSL::ASN1::Integer.new(OpenSSL::BN.new(modulus, 2))
-      sequence << OpenSSL::ASN1::Integer.new(OpenSSL::BN.new(exponent, 2))
-
-      bank = OpenSSL::PKey::RSA.new(OpenSSL::ASN1::Sequence(sequence).to_der)
-
-      self.keys["#{host_id.upcase}.#{type}"] = Epics::Key.new(bank)
+      self.keys["#{host_id.upcase}.#{type}"] = Epics::Key.new(rsa_from_modulus_exponent(modulus, exponent))
     end
 
     [bank_x, bank_e]
   end
 
-  def AZV(document)
+  def AZV(document, **overrides)
+    return btf_upload('AZV', document, **overrides) if h005?
+
     upload(Epics::AZV, document)
   end
 
@@ -149,27 +188,39 @@ class Epics::Client
     upload(Epics::CD1, document)
   end
 
-  def CDB(document)
+  def CDB(document, **overrides)
+    return btf_upload('CDB', document, **overrides) if h005?
+
     upload(Epics::CDB, document)
   end
 
-  def C2S(document)
+  def C2S(document, **overrides)
+    return btf_upload('C2S', document, **overrides) if h005?
+
     upload(Epics::C2S, document)
   end
 
-  def CDD(document)
+  def CDD(document, **overrides)
+    return btf_upload('CDD', document, **overrides) if h005?
+
     upload(Epics::CDD, document)
   end
 
-  def XE2(document)
+  def XE2(document, **overrides)
+    return btf_upload('XE2', document, **overrides) if h005?
+
     upload(Epics::XE2, document)
   end
 
-  def XE3(document)
+  def XE3(document, **overrides)
+    return btf_upload('XE3', document, **overrides) if h005?
+
     upload(Epics::XE3, document)
   end
 
-  def CDS(document)
+  def CDS(document, **overrides)
+    return btf_upload('CDS', document, **overrides) if h005?
+
     upload(Epics::CDS, document)
   end
 
@@ -177,15 +228,21 @@ class Epics::Client
     upload(Epics::XDS, document)
   end
 
-  def CCT(document)
+  def CCT(document, **overrides)
+    return btf_upload('CCT', document, **overrides) if h005?
+
     upload(Epics::CCT, document)
   end
 
-  def CIP(document)
+  def CIP(document, **overrides)
+    return btf_upload('CIP', document, **overrides) if h005?
+
     upload(Epics::CIP, document)
   end
 
-  def CCS(document)
+  def CCS(document, **overrides)
+    return btf_upload('CCS', document, **overrides) if h005?
+
     upload(Epics::CCS, document)
   end
 
@@ -197,7 +254,21 @@ class Epics::Client
     upload(Epics::FUL, document)
   end
 
-  def STA(from = nil, to = nil)
+  # EBICS 3.0 (H005) generic upload. `service` is an Epics::BTF (or a hash with
+  # the same keys). Replaces FUL under H005.
+  def BTU(document, service, signature_flag: true, request_eds: false, parameters: nil)
+    upload(Epics::BTU, document, service: service, signature_flag: signature_flag, request_eds: request_eds, parameters: parameters)
+  end
+
+  # EBICS 3.0 (H005) generic download. `service` is an Epics::BTF (or a hash with
+  # the same keys). Replaces FDL under H005.
+  def BTD(service, from: nil, to: nil, parameters: nil)
+    download(Epics::BTD, service: service, from: from, to: to, parameters: parameters)
+  end
+
+  def STA(from = nil, to = nil, **overrides)
+    return btf_download('STA', from, to, **overrides) if h005?
+
     download(Epics::STA, from: from, to: to)
   end
 
@@ -205,64 +276,104 @@ class Epics::Client
     download(Epics::FDL, file_format: format, from: from, to: to )
   end
 
-  def VMK(from = nil, to = nil)
+  def VMK(from = nil, to = nil, **overrides)
+    return btf_download('VMK', from, to, **overrides) if h005?
+
     download(Epics::VMK, from: from, to: to)
   end
 
-  def CDZ(from = nil, to = nil)
+  def CDZ(from = nil, to = nil, **overrides)
+    return btf_download('CDZ', from, to, **overrides) if h005?
+
     download_and_unzip(Epics::CDZ, from: from, to: to)
   end
 
-  def CRZ(from = nil, to = nil)
+  def CRZ(from = nil, to = nil, **overrides)
+    return btf_download('CRZ', from, to, **overrides) if h005?
+
     download_and_unzip(Epics::CRZ, from: from, to: to)
   end
 
-  def BKA(from, to)
+  def BKA(from, to, **overrides)
+    return btf_download('BKA', from, to, **overrides) if h005?
+
     download_and_unzip(Epics::BKA, from: from, to: to)
   end
 
-  def C52(from, to)
+  def C52(from, to, **overrides)
+    return btf_download('C52', from, to, **overrides) if h005?
+
     download_and_unzip(Epics::C52, from: from, to: to)
   end
 
-  def C53(from, to)
+  def C53(from, to, **overrides)
+    return btf_download('C53', from, to, **overrides) if h005?
+
     download_and_unzip(Epics::C53, from: from, to: to)
   end
 
-  def C54(from, to)
+  def C54(from, to, **overrides)
+    return btf_download('C54', from, to, **overrides) if h005?
+
     download_and_unzip(Epics::C54, from: from, to: to)
   end
 
-  def C5N(from, to)
+  def C5N(from, to, **overrides)
+    return btf_download('C5N', from, to, **overrides) if h005?
+
     download_and_unzip(Epics::C5N, from: from, to: to)
   end
 
-  def Z01(from, to)
+  def Z01(from, to, **overrides)
+    return btf_download('Z01', from, to, **overrides) if h005?
+
     download_and_unzip(Epics::Z01, from: from, to: to)
   end
 
-  def Z52(from, to)
+  def Z52(from, to, **overrides)
+    return btf_download('Z52', from, to, **overrides) if h005?
+
     download_and_unzip(Epics::Z52, from: from, to: to)
   end
 
-  def Z53(from, to)
+  def Z53(from, to, **overrides)
+    return btf_download('Z53', from, to, **overrides) if h005?
+
     download_and_unzip(Epics::Z53, from: from, to: to)
   end
 
-  def Z54(from, to)
+  def Z54(from, to, **overrides)
+    return btf_download('Z54', from, to, **overrides) if h005?
+
     download_and_unzip(Epics::Z54, from: from, to: to)
   end
 
   def HAA
-    Nokogiri::XML(download(Epics::HAA)).at_xpath("//xmlns:OrderTypes", xmlns: "urn:org:ebics:H004").content.split(/\s/)
+    doc = Nokogiri::XML(download(Epics::HAA))
+    if h005?
+      # H005: available transactions are BTF services, not a flat OrderTypes list.
+      doc.xpath("//xmlns:Service", xmlns: namespace).map { |s| service_from_node(s) }
+    else
+      doc.at_xpath("//xmlns:OrderTypes", xmlns: namespace).content.split(/\s/)
+    end
   end
 
   def HTD
     Nokogiri::XML(download(Epics::HTD)).tap do |htd|
-      @iban        ||= htd.at_xpath("//xmlns:AccountNumber[@international='true']", xmlns: "urn:org:ebics:H004").text rescue nil
-      @bic         ||= htd.at_xpath("//xmlns:BankCode[@international='true']", xmlns: "urn:org:ebics:H004").text rescue nil
-      @name        ||= htd.at_xpath("//xmlns:Name", xmlns: "urn:org:ebics:H004").text rescue nil
-      @order_types ||= htd.search("//xmlns:OrderTypes", xmlns: "urn:org:ebics:H004").map{|o| o.content.split(/\s/) }.delete_if{|o| o == ""}.flatten
+      @iban        ||= htd.at_xpath("//xmlns:AccountNumber[@international='true']", xmlns: namespace).text rescue nil
+      @bic         ||= htd.at_xpath("//xmlns:BankCode[@international='true']", xmlns: namespace).text rescue nil
+      @name        ||= htd.at_xpath("//xmlns:Name", xmlns: namespace).text rescue nil
+
+      if h005?
+        # H005 replaces OrderTypes with OrderInfo entries: each has an
+        # AdminOrderType and, for BTU/BTD, a BTF Service.
+        order_infos    = htd.search("//xmlns:OrderInfo", xmlns: namespace)
+        @order_types ||= order_infos.map { |o| o.at_xpath("./xmlns:AdminOrderType", xmlns: namespace)&.content }.compact.uniq
+        @services    ||= order_infos.map { |o| o.at_xpath("./xmlns:Service", xmlns: namespace) }.compact.map { |s| service_from_node(s) }
+      else
+        @order_types ||= htd.search("//xmlns:OrderTypes", xmlns: namespace).map{|o| o.content.split(/\s/) }.delete_if{|o| o == ""}.flatten
+        @services    ||= []
+      end
     end.to_xml
   end
 
@@ -289,24 +400,126 @@ class Epics::Client
   def save_keys(path)
     File.write(path, dump_keys)
   end
-  
+
   def x_509_certificate(type)
     content = x_509_certificates_content[type.to_sym]
-    return if content.nil? || content.empty?
+    if content.nil? || content.empty?
+      # EBICS 3.0 mandates X.509 certificates for all keys. When none was
+      # supplied, fall back to a self-signed certificate (valid for shared-key
+      # banks, e.g. German banks). H004 keeps the raw RSAKeyValue behaviour.
+      return unless h005?
+      return self_signed_certificate(type)
+    end
     Epics::X509Certificate.new(content)
   end
-  
+
   def x_509_certificate_hash(type)
-    content = x_509_certificates_content[type.to_sym]
-    return if content.nil? || content.empty?
-    cert = OpenSSL::X509::Certificate.new(content)
-    Digest::SHA256.hexdigest(cert.to_der).upcase
+    # Routes through x_509_certificate so H005 self-signed certificates get a
+    # fingerprint too — the INI letter needs it for subscriber verification.
+    x_509_certificate(type)&.fingerprint
   end
 
   private
 
-  def upload(order_type, document)
-    order = order_type.new(self, document)
+  DSIG_NS = 'http://www.w3.org/2000/09/xmldsig#'.freeze
+
+  HPB_KEY_INFOS = {
+    'AuthenticationPubKeyInfo' => 'AuthenticationVersion',
+    'EncryptionPubKeyInfo'     => 'EncryptionVersion',
+  }.freeze
+
+  # EBICS 3.0 (H005) HPB response: the bank's authentication and encryption keys
+  # are transmitted only as X.509 certificates (ds:X509Data). Extract the public
+  # key from each certificate rather than from a PubKeyValue/RSAKeyValue.
+  def hpb_h005(doc)
+    HPB_KEY_INFOS.each do |element, version_element|
+      info = doc.at_xpath("//xmlns:#{element}", xmlns: namespace)
+      next unless info
+
+      type = info.at_xpath("./xmlns:#{version_element}", xmlns: namespace)&.content
+      next unless type
+
+      self.keys["#{host_id.upcase}.#{type}"] = Epics::Key.new(bank_key_from_info(info))
+    end
+
+    [bank_x, bank_e]
+  end
+
+  def bank_key_from_info(info)
+    cert = info.at_xpath(".//ds:X509Certificate", ds: DSIG_NS)
+    return OpenSSL::X509::Certificate.new(Base64.decode64(cert.content)).public_key if cert
+
+    # Fallback: some banks additionally include a raw RSAKeyValue.
+    modulus  = info.at_xpath(".//*[local-name() = 'Modulus']")
+    exponent = info.at_xpath(".//*[local-name() = 'Exponent']")
+    unless modulus && exponent
+      raise "HPB response: #{info.name} contains neither an X509Certificate nor an RSAKeyValue — cannot import the bank key"
+    end
+
+    rsa_from_modulus_exponent(Base64.decode64(modulus.content), Base64.decode64(exponent.content))
+  end
+
+  # Parses a BTF <Service> element (from HAA/HTD responses) into an Epics::BTF.
+  def service_from_node(node)
+    msg       = node.at_xpath("./xmlns:MsgName", xmlns: namespace)
+    container = node.at_xpath("./xmlns:Container", xmlns: namespace)
+    text = ->(name) { node.at_xpath("./xmlns:#{name}", xmlns: namespace)&.content }
+
+    Epics::BTF.new(
+      service_name:   text.call('ServiceName'),
+      scope:          text.call('Scope'),
+      service_option: text.call('ServiceOption'),
+      container:      container && (container['containerType'] || container.content),
+      msg_name:       msg&.content,
+      msg_name_version:    msg && msg['version'],
+      msg_variant:    msg && msg['variant'],
+      msg_format:     msg && msg['format'],
+    )
+  end
+
+  def rsa_from_modulus_exponent(modulus, exponent)
+    sequence = [
+      OpenSSL::ASN1::Integer.new(OpenSSL::BN.new(modulus, 2)),
+      OpenSSL::ASN1::Integer.new(OpenSSL::BN.new(exponent, 2)),
+    ]
+    OpenSSL::PKey::RSA.new(OpenSSL::ASN1::Sequence(sequence).to_der)
+  end
+
+  KEY_FOR_CERT_TYPE = { a: Epics::SIGNATURE_VERSION, x: 'X002', e: 'E002' }.freeze
+
+  def self_signed_certificate(type)
+    key_name = KEY_FOR_CERT_TYPE.fetch(type.to_sym)
+    key = keys[key_name]
+    return unless key
+
+    # Stored in #certificates so save_keys persists it — the certificate (and
+    # thus its fingerprint on the INI letter) must stay identical across
+    # processes, otherwise the bank cannot verify the subscriber.
+    certificates["#{key_name}#{CERTIFICATE_SUFFIX}"] ||=
+      Epics::X509Certificate.generate_self_signed(
+        key.key,
+        subject: "/CN=#{user_id}/O=#{partner_id}/OU=#{host_id}"
+      )
+  end
+
+  # Route a classic order code to its H005 BTF Service via Epics::BtfMapping.
+  # `overrides` replace individual BTF attributes (scope, msg_name_version, ...) on
+  # top of the mapped starter-set default.
+  def btf_upload(code, document, **overrides)
+    self.BTU(document, Epics::BtfMapping.upload(code, **overrides))
+  end
+
+  def btf_download(code, from, to, **overrides)
+    btf = Epics::BtfMapping.download(code, **overrides)
+    if btf.container == 'ZIP'
+      download_and_unzip(Epics::BTD, service: btf, from: from, to: to)
+    else
+      self.BTD(btf, from: from, to: to)
+    end
+  end
+
+  def upload(order_type, document, **options)
+    order = order_type.new(self, document, **options)
     res = post(url, order.to_xml).body
     order.transaction_id = res.transaction_id
 
@@ -347,13 +560,24 @@ class Epics::Client
   end
 
   def extract_keys
-    JSON.load(self.keys_content).each_with_object({}) do |(type, key), memo|
-      memo[type] = Epics::Key.new(decrypt(key)) if key
+    JSON.load(self.keys_content).each_with_object({}) do |(type, blob), memo|
+      next unless blob
+
+      # Entries suffixed with .crt are persisted X.509 certificates (H005
+      # self-signed certs survive process restarts this way); everything else
+      # is an RSA key.
+      if type.end_with?(CERTIFICATE_SUFFIX)
+        certificates[type] = Epics::X509Certificate.new(decrypt(blob))
+      else
+        memo[type] = Epics::Key.new(decrypt(blob))
+      end
     end
   end
 
   def dump_keys
-    JSON.dump(keys.each_with_object({}) {|(k,v),m| m[k]= encrypt(v.key.to_pem)})
+    data = keys.each_with_object({}) { |(k, v), m| m[k] = encrypt(v.key.to_pem) }
+    certificates.each { |k, v| data[k] = encrypt(v.to_pem) }
+    JSON.dump(data)
   end
 
   def new_cipher

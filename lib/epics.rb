@@ -9,6 +9,33 @@ require 'nokogiri'
 require 'faraday'
 require 'securerandom'
 require 'time'
+
+module Epics
+  DEFAULT_PRODUCT_NAME = 'EPICS - a ruby ebics kernel'
+  DEFAULT_LOCALE = :de
+  DEFAULT_VERSION = :h004
+
+  # The electronic-signature version used for the user (bank-technical) key.
+  # This gem is A006-only: A006 (RSASSA-PSS, SHA-256) is signed by Epics::Key#sign
+  # and declared in every SignatureVersion element. A006 is valid under both
+  # H004 and H005 (which mandates it); the legacy A005 (RSA PKCS#1 v1.5) is not
+  # supported — the authentication key X002 stays PKCS#1 v1.5 on its own path.
+  SIGNATURE_VERSION = 'A006'
+
+  # EBICS protocol version descriptors. The gem defaults to H004 (EBICS 2.5) so
+  # that existing users are unaffected; H005 (EBICS 3.0) is opt-in via the
+  # `version:` client option.
+  EBICS_PROTOCOLS = {
+    h004: { namespace: 'urn:org:ebics:H004', version: 'H004', revision: '1' },
+    h005: { namespace: 'urn:org:ebics:H005', version: 'H005', revision: '1' },
+  }.freeze
+
+  # Raised when an order type is requested under an EBICS protocol version that
+  # does not support it (e.g. a classic H004 business order under H005, which
+  # expresses business transactions as BTF services instead).
+  class VersionSupportError < StandardError; end
+end
+
 require "epics/version"
 require "epics/key"
 require "epics/response"
@@ -59,15 +86,14 @@ require "epics/xct"
 require "epics/hia"
 require "epics/ini"
 require "epics/hev"
+require "epics/btf"
+require "epics/btf_mapping"
+require "epics/btd"
+require "epics/btu"
 require "epics/signer"
 require "epics/x_509_certificate"
 require "epics/client"
 
 I18n.load_path += Dir[File.join(File.dirname(__FILE__), 'letter/locales', '*.yml')]
-
-module Epics
-  DEFAULT_PRODUCT_NAME = 'EPICS - a ruby ebics kernel'
-  DEFAULT_LOCALE = :de
-end
 
 Ebics = Epics
